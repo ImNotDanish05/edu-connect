@@ -43,3 +43,6 @@ next-env.d.ts
 
 # TypeScript incremental state
 *.tsbuildinfo
+
+/danish_ai_summary
+DANISH_AI_SUMMARY.md
