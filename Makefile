@@ -18,7 +18,7 @@ REDIS_PORT  := $${LMS_REDIS_PORT:-6429}
 TEST_DB     ?= postgres://lms:lms@localhost:$(PG_PORT)/lms_test
 TEST_REDIS  ?= redis://localhost:$(REDIS_PORT)/1
 
-.PHONY: help env up up-aws down logs ps demo admin test test-integration test-matrix e2e lint typecheck build openapi \
+.PHONY: help env up dev-up up-aws down logs ps demo admin test test-integration test-matrix e2e lint typecheck build openapi \
         sanitize tf-fmt tf-validate tf-lint tf-security aws-plan aws-deploy aws-migrate aws-admin clean
 
 help: ## Show this help
@@ -28,6 +28,19 @@ help: ## Show this help
 
 env: ## Generate deploy/compose/.env with random local-only secrets
 	@scripts/gen-local-env.sh
+
+dev-up: env ## Start background services only (Postgres, Redis, Mailpit, Stubs) for hybrid local development
+	$(FLOCI) up -d postgres redis mailpit stubs floci terraform migrate
+	@echo ""
+	@echo "  database localhost:$${LMS_PG_PORT:-5492}  (Postgres)"
+	@echo "  redis    localhost:$${LMS_REDIS_PORT:-6429}"
+	@echo "  mail     http://localhost:$${LMS_MAILPIT_PORT:-8046}"
+	@echo "  s3/ses   http://localhost:$${LMS_FLOCI_PORT:-4597}  (Floci)"
+	@echo "  stubs    http://localhost:$${LMS_STUB_PORT:-5119}"
+	@echo ""
+	@echo "  Next (run on host terminal):"
+	@echo "    pnpm --filter @open-lms/api dev   (port $${LMS_API_PORT:-5026})"
+	@echo "    pnpm --filter @open-lms/web dev   (port $${LMS_WEB_PORT:-3530})"
 
 up: env ## Start everything on emulated AWS (Floci), provisioned by the same Terraform as production
 	$(FLOCI) up -d --build --wait
