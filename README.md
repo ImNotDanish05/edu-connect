@@ -1,3 +1,12 @@
+> ### 📌 Acknowledgement & Credits
+> This project is a fork and adaptive extension of the open-source platform:
+> - **Original Repository**: [euron-sde-team/euron-open-lms](https://github.com/euron-sde-team/euron-open-lms)
+> - **Original Creator / Author**: [Raushan (@raushansde)](https://github.com/raushansde)
+> 
+> Forked and customized as a hybrid solution (leveraging an established open-source LMS foundation and extending it with custom MVP features) for a client's educational platform project. Full credit, gratitude, and appreciation for the underlying LMS architecture belong to the original author under the MIT License.
+
+---
+
 <p align="center">
   <img src="docs/assets/banner.svg" alt="Euron Open LMS: courses, a classroom, quizzes, reviewed projects, certificates and billing, on infrastructure you own" width="100%">
 </p>
