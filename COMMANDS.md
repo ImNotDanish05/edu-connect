@@ -48,6 +48,25 @@ make down
 
 ---
 
+## 4. Mengisi Data Demo (Seeder)
+Mengisi database dengan akun admin, instruktur, murid demo, kursus, dan data transaksi awal.
+
+- **Untuk Hybrid Dev Mode (Host Terminal)**:
+  ```bash
+  # Pastikan make dev-up sudah berjalan, lalu jalankan:
+  pnpm demo:seed
+  ```
+
+- **Untuk Full Docker Mode**:
+  ```bash
+  # Pastikan make up sudah berjalan, lalu jalankan:
+  make demo
+  ```
+
+> Password seragam untuk semua akun hasil seed: `Demo-XoK70FnqieMj` (Lihat daftar lengkapnya di `../catatan/pribadi/akun_demo.txt`).
+
+---
+
 ## Port Penting
 - **Web App**: http://localhost:3530
 - **API**: http://localhost:5026
