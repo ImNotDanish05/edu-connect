@@ -55,6 +55,7 @@ services:
         # The S3 Control API (bucket tagging) addresses <account-id>.<endpoint>, so the
         # emulated account's name has to resolve to the emulator as well.
         aliases: ["000000000000.floci"]
+    restart: unless-stopped
 
   # One-shot: provision the emulator with the production modules.
   terraform:
