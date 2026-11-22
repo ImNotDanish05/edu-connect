@@ -201,6 +201,8 @@ const LEGACY_COURSE_SLUGS = [
 
 const LEGACY_BUNDLE_SLUGS = ["data-career-starter", "production-ready-engineer"] as const;
 
+export const DEMO_YOUTUBE_VIDEO_ID = "ndWpp9AVdbU";
+
 /**
  * Idempotent upgrade for an already-seeded demo database: ensures IDR is enabled as the
  * default currency, adds Indonesia PPN 11% tax rule, upgrades legacy English catalog
@@ -288,6 +290,12 @@ async function ensureIdrSeeded(adminId: string): Promise<void> {
 
         if (it.kind === "ARTICLE") {
           await db.updateTable("lectures").set({ body: it.body }).where("item_id", "=", itemRow.id).execute();
+        } else if (it.kind === "VIDEO") {
+          await db
+            .updateTable("lectures")
+            .set({ video_provider: "YOUTUBE", video_ref: DEMO_YOUTUBE_VIDEO_ID, video_status: "READY", body: it.notes ?? null })
+            .where("item_id", "=", itemRow.id)
+            .execute();
         } else if (it.kind === "PDF") {
           await db.updateTable("lectures").set({ body: "Unduh dan simpan rangkuman materi ini sebagai pendamping belajar." }).where("item_id", "=", itemRow.id).execute();
         } else if (it.kind === "QUIZ") {
@@ -339,6 +347,14 @@ async function ensureIdrSeeded(adminId: string): Promise<void> {
       }
     }
   }
+
+  // Ensure any existing EVS or MP4 lectures across the whole database are upgraded to YouTube dummy video
+  await db
+    .updateTable("lectures")
+    .set({ video_provider: "YOUTUBE", video_ref: DEMO_YOUTUBE_VIDEO_ID, video_status: "READY" })
+    .where("lecture_kind", "=", "VIDEO")
+    .where("video_provider", "in", ["EVS", "MP4"])
+    .execute();
 
   // 4. Sync Bundles & Prices
   for (const [bi, def] of DEMO_BUNDLES.entries()) {
@@ -720,7 +736,7 @@ async function createCourse(c: DemoCourse, ci: number, categoryId: Map<string, s
         .execute();
       const seeded: SeededItem = { id: itemId, kind, demo: it, durationSeconds };
       if (it.kind === "VIDEO") {
-        await db.insertInto("lectures").values({ item_id: itemId, lecture_kind: "VIDEO", video_provider: "EVS", video_ref: `demo-video-${String(nextVideo()).padStart(3, "0")}`, video_status: "READY", body: it.notes ?? null }).execute();
+        await db.insertInto("lectures").values({ item_id: itemId, lecture_kind: "VIDEO", video_provider: "YOUTUBE", video_ref: DEMO_YOUTUBE_VIDEO_ID, video_status: "READY", body: it.notes ?? null }).execute();
       } else if (it.kind === "ARTICLE") {
         await db.insertInto("lectures").values({ item_id: itemId, lecture_kind: "ARTICLE", body: it.body }).execute();
       } else if (it.kind === "PDF") {

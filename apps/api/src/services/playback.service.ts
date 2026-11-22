@@ -11,7 +11,7 @@
  * The video reference itself is only ever revealed here, in the form the player needs.
  */
 import type { Playback } from "@open-lms/types";
-import { config } from "../core/config";
+import { config, evsEnabled } from "../core/config";
 import type { Actor } from "../core/context";
 import { conflict, notFound } from "../core/errors";
 import { youtubeId } from "../domain/safe-url";
@@ -32,11 +32,29 @@ export async function playback(viewer: Actor | null, itemId: string): Promise<Pl
 
   switch (lecture.video_provider) {
     case "EVS": {
+      if (!evsEnabled()) {
+        return {
+          provider: "YOUTUBE",
+          embedUrl: "https://www.youtube-nocookie.com/embed/ndWpp9AVdbU?rel=0",
+          resumeAt,
+          watermark: null,
+          expiresAt: null,
+        };
+      }
       const session = await mintPlayback(lecture.video_ref, viewer?.id ?? "preview-anon", new URL(config.APP_WEB_URL).origin);
       return { provider: "EVS", manifestUrl: session.manifestUrl, thumbnailsUrl: session.thumbnailsUrl, posterUrl: session.posterUrl, watermark: session.watermark?.text ?? null, expiresAt: session.expiresAt, resumeAt };
     }
     case "HLS":
     case "MP4": {
+      if (lecture.video_ref.includes("commondatastorage.googleapis.com")) {
+        return {
+          provider: "YOUTUBE",
+          embedUrl: "https://www.youtube-nocookie.com/embed/ndWpp9AVdbU?rel=0",
+          resumeAt,
+          watermark: null,
+          expiresAt: null,
+        };
+      }
       const email = signedIn ? ((await classroomRepo.viewerEmail(signedIn.id))?.email ?? null) : null;
       return { provider: lecture.video_provider, url: lecture.video_ref, posterUrl: null, watermark: email, resumeAt, expiresAt: null };
     }
