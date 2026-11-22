@@ -50,8 +50,24 @@ function target(rand: () => number): number {
 }
 
 export const DEMO_BUNDLES = [
-  { slug: "data-career-starter", title: "Data Career Starter", description: "SQL, statistics and machine learning: the three courses most analysts take first, together.", courses: ["practical-sql", "statistics-for-decisions", "machine-learning-foundations"], usd: 12900, inr: 999900, idr: 2990000 },
-  { slug: "production-ready-engineer", title: "Production-Ready Engineer", description: "Types, APIs and containers: everything between your editor and a calm on-call week.", courses: ["modern-typescript", "building-reliable-apis", "containers-and-kubernetes"], usd: 16900, inr: 1299900, idr: 3990000 },
+  {
+    slug: "paket-sains-statistika-dan-penalaran-kuantitatif",
+    title: "Paket Sains, Statistika, dan Penalaran Kuantitatif",
+    description: "Penalaran matematika, statistika penelitian, dan matematika olimpiade: tiga modul fondasi kuantitatif dan sains dalam satu paket terpadu.",
+    courses: ["penalaran-matematika-dan-kuantitatif", "statistika-dasar-dan-analisis-data-penelitian", "matematika-olimpiade-teori-bilangan-kombinatorika"],
+    usd: 12900,
+    inr: 999900,
+    idr: 2990000,
+  },
+  {
+    slug: "paket-ekonomi-perencanaan-bisnis-dan-riset-ilmiah",
+    title: "Paket Ekonomi, Perencanaan Bisnis, dan Riset Ilmiah",
+    description: "Pengantar ekonomi & akuntansi, penyusunan proposal PKM-K/perencanaan bisnis, serta metodologi karya tulis ilmiah untuk pelajar dan mahasiswa.",
+    courses: ["pengantar-ekonomi-dan-akuntansi-dasar", "penyusunan-proposal-pkm-dan-perencanaan-bisnis", "metodologi-penelitian-dan-karya-tulis-ilmiah"],
+    usd: 16900,
+    inr: 1299900,
+    idr: 3990000,
+  },
 ] as const;
 
 type DemoCurrency = "IDR" | "USD" | "INR";
@@ -85,7 +101,15 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
   const planId = newId();
   await db
     .insertInto("plans")
-    .values({ id: planId, slug: "all-access", name: "All-Access", description: "Every course in the catalog, including the members-only ones, for as long as you are subscribed.", features: ["Every current and future course", "Members-only courses", "Certificates for everything you finish", "Cancel any time"], trial_days: 7, status: "ACTIVE" })
+    .values({
+      id: planId,
+      slug: "all-access",
+      name: "Paket Akses Penuh (All-Access)",
+      description: "Akses penuh ke seluruh modul di katalog, termasuk modul eksklusif khusus pelanggan, selama masa langgananmu aktif.",
+      features: ["Akses semua modul saat ini dan modul baru mendatang", "Termasuk modul eksklusif khusus pelanggan", "Sertifikat kelulusan untuk setiap modul yang diselesaikan", "Bebas batalkan kapan saja tanpa penalti"],
+      trial_days: 7,
+      status: "ACTIVE",
+    })
     .execute();
   const planPrices = {
     IDR: { MONTH: newId(), YEAR: newId() },

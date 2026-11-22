@@ -184,9 +184,27 @@ function printLogins(password: string | null, fresh: boolean): void {
   process.stdout.write(lines.join("\n") + "\n");
 }
 
+const LEGACY_COURSE_SLUGS = [
+  "modern-typescript",
+  "practical-sql",
+  "machine-learning-foundations",
+  "interfaces-people-trust",
+  "git-and-code-review",
+  "product-discovery",
+  "containers-and-kubernetes",
+  "statistics-for-decisions",
+  "accessible-front-end",
+  "writing-for-software-teams",
+  "building-reliable-apis",
+  "data-visualization-that-explains",
+] as const;
+
+const LEGACY_BUNDLE_SLUGS = ["data-career-starter", "production-ready-engineer"] as const;
+
 /**
  * Idempotent upgrade for an already-seeded demo database: ensures IDR is enabled as the
- * default currency, adds Indonesia PPN 11% tax rule, and backfills IDR prices + coupon.
+ * default currency, adds Indonesia PPN 11% tax rule, upgrades legacy English catalog
+ * content to the Indonesian EduConnect academic curriculum, and backfills IDR prices.
  */
 async function ensureIdrSeeded(adminId: string): Promise<void> {
   await saveSettings(
@@ -205,24 +223,134 @@ async function ensureIdrSeeded(adminId: string): Promise<void> {
     adminId,
   );
 
-  const dbCourses = await db.selectFrom("courses").select(["id", "slug"]).execute();
-  const bySlug = new Map(COURSES.map((c) => [c.slug, c]));
-  for (const row of dbCourses) {
-    const def = bySlug.get(row.slug);
-    if (!def?.idr) continue;
-    const found = await db.selectFrom("prices").select("id").where("sellable_type", "=", "COURSE").where("sellable_id", "=", row.id).where("currency", "=", "IDR").where("active", "=", true).executeTakeFirst();
-    if (found) {
-      await db.updateTable("prices").set({ amount_minor: def.idr, compare_at_minor: def.compareIdr ?? null }).where("id", "=", found.id).execute();
-    } else {
-      await db.insertInto("prices").values({ id: newId(), sellable_type: "COURSE", sellable_id: row.id, currency: "IDR", amount_minor: def.idr, compare_at_minor: def.compareIdr ?? null }).execute();
+  // 1. Sync Categories (by position 0..4)
+  const categoryId = new Map<string, string>();
+  const dbCategories = await db.selectFrom("categories").select(["id", "position"]).orderBy("position").execute();
+  for (const [i, cat] of CATEGORIES.entries()) {
+    const row = dbCategories.find((r) => r.position === i) ?? dbCategories[i];
+    if (row) {
+      await db.updateTable("categories").set({ slug: cat.slug, name: cat.name, description: cat.description }).where("id", "=", row.id).execute();
+      categoryId.set(cat.slug, row.id);
     }
   }
 
-  const dbBundles = await db.selectFrom("bundles").select(["id", "slug"]).execute();
-  const bundleBySlug = new Map(DEMO_BUNDLES.map((b) => [b.slug, b]));
-  for (const row of dbBundles) {
-    const def = bundleBySlug.get(row.slug as (typeof DEMO_BUNDLES)[number]["slug"]);
-    if (!def?.idr) continue;
+  // 2. Sync Instructors
+  const dbInstructors = await db.selectFrom("users").select(["id"]).where("role", "=", "INSTRUCTOR").orderBy("created_at").orderBy("id").execute();
+  for (const [i, ins] of INSTRUCTORS.entries()) {
+    const row = dbInstructors[i];
+    if (row) {
+      await db.updateTable("users").set({ display_name: ins.name, headline: ins.headline, bio: ins.bio }).where("id", "=", row.id).execute();
+    }
+  }
+
+  // 3. Sync Courses, Sections, Items, Lectures, Quizzes, Questions, Assignments & Prices
+  for (const [ci, c] of COURSES.entries()) {
+    const legacySlug = LEGACY_COURSE_SLUGS[ci];
+    const row = await db
+      .selectFrom("courses")
+      .select(["id", "slug"])
+      .where("slug", "in", legacySlug ? [c.slug, legacySlug] : [c.slug])
+      .executeTakeFirst();
+    if (!row) continue;
+
+    await db
+      .updateTable("courses")
+      .set({
+        slug: c.slug,
+        title: c.title,
+        subtitle: c.subtitle,
+        description: c.description,
+        outcomes: c.outcomes,
+        prerequisites: c.prerequisites,
+        level: c.level,
+        language: "id",
+      })
+      .where("id", "=", row.id)
+      .execute();
+
+    const catId = categoryId.get(c.category);
+    if (catId) {
+      await db.updateTable("course_categories").set({ category_id: catId }).where("course_id", "=", row.id).execute();
+    }
+    await db.updateTable("order_items").set({ title: c.title }).where("sellable_type", "=", "COURSE").where("sellable_id", "=", row.id).execute();
+
+    const dbSections = await db.selectFrom("course_sections").select(["id", "position"]).where("course_id", "=", row.id).orderBy("position").execute();
+    for (const [si, sec] of c.sections.entries()) {
+      const secRow = dbSections.find((s) => s.position === si) ?? dbSections[si];
+      if (!secRow) continue;
+      await db.updateTable("course_sections").set({ title: sec.title }).where("id", "=", secRow.id).execute();
+
+      const dbItems = await db.selectFrom("course_items").select(["id", "position", "kind"]).where("section_id", "=", secRow.id).orderBy("position").execute();
+      for (const [ii, it] of sec.items.entries()) {
+        const itemRow = dbItems.find((x) => x.position === ii) ?? dbItems[ii];
+        if (!itemRow) continue;
+        await db.updateTable("course_items").set({ title: it.title }).where("id", "=", itemRow.id).execute();
+
+        if (it.kind === "ARTICLE") {
+          await db.updateTable("lectures").set({ body: it.body }).where("item_id", "=", itemRow.id).execute();
+        } else if (it.kind === "PDF") {
+          await db.updateTable("lectures").set({ body: "Unduh dan simpan rangkuman materi ini sebagai pendamping belajar." }).where("item_id", "=", itemRow.id).execute();
+        } else if (it.kind === "QUIZ") {
+          await db
+            .updateTable("quizzes")
+            .set({ instructions: "Jawab seluruh pertanyaan berikut, lalu kirimkan. Pembahasan akan ditampilkan setelah kuis dikirim." })
+            .where("item_id", "=", itemRow.id)
+            .execute();
+          const qLinks = await db.selectFrom("quiz_questions").select(["question_id", "position"]).where("quiz_item_id", "=", itemRow.id).orderBy("position").execute();
+          for (const [qi, q] of it.questions.entries()) {
+            const qLink = qLinks.find((x) => x.position === qi) ?? qLinks[qi];
+            if (!qLink) continue;
+            const bq = bankQuestion(q);
+            await db
+              .updateTable("questions")
+              .set({
+                kind: bq.kind,
+                prompt: bq.prompt,
+                explanation: bq.explanation,
+                points: bq.points,
+                options: JSON.stringify(bq.options),
+                accepted_answers: bq.acceptedAnswers,
+                tags: [c.category],
+              })
+              .where("id", "=", qLink.question_id)
+              .execute();
+          }
+        } else if (it.kind === "ASSIGNMENT") {
+          const rubric = it.rubric.map(([title, description, maxPoints], i) => ({ id: `c${i + 1}`, title, description, maxPoints }));
+          await db
+            .updateTable("assignments")
+            .set({
+              instructions: it.instructions,
+              rubric: JSON.stringify(rubric),
+              pass_points: Math.ceil(rubric.reduce((a, r) => a + r.maxPoints, 0) * 0.6),
+            })
+            .where("item_id", "=", itemRow.id)
+            .execute();
+        }
+      }
+    }
+
+    if (c.idr) {
+      const found = await db.selectFrom("prices").select("id").where("sellable_type", "=", "COURSE").where("sellable_id", "=", row.id).where("currency", "=", "IDR").where("active", "=", true).executeTakeFirst();
+      if (found) {
+        await db.updateTable("prices").set({ amount_minor: c.idr, compare_at_minor: c.compareIdr ?? null }).where("id", "=", found.id).execute();
+      } else {
+        await db.insertInto("prices").values({ id: newId(), sellable_type: "COURSE", sellable_id: row.id, currency: "IDR", amount_minor: c.idr, compare_at_minor: c.compareIdr ?? null }).execute();
+      }
+    }
+  }
+
+  // 4. Sync Bundles & Prices
+  for (const [bi, def] of DEMO_BUNDLES.entries()) {
+    const legacySlug = LEGACY_BUNDLE_SLUGS[bi];
+    const row = await db
+      .selectFrom("bundles")
+      .select(["id", "slug"])
+      .where("slug", "in", legacySlug ? [def.slug, legacySlug] : [def.slug])
+      .executeTakeFirst();
+    if (!row) continue;
+    await db.updateTable("bundles").set({ slug: def.slug, title: def.title, description: def.description }).where("id", "=", row.id).execute();
+    await db.updateTable("order_items").set({ title: def.title }).where("sellable_type", "=", "BUNDLE").where("sellable_id", "=", row.id).execute();
     const found = await db.selectFrom("prices").select("id").where("sellable_type", "=", "BUNDLE").where("sellable_id", "=", row.id).where("currency", "=", "IDR").where("active", "=", true).executeTakeFirst();
     if (found) {
       await db.updateTable("prices").set({ amount_minor: def.idr }).where("id", "=", found.id).execute();
@@ -231,8 +359,18 @@ async function ensureIdrSeeded(adminId: string): Promise<void> {
     }
   }
 
+  // 5. Sync Plan
   const plan = await db.selectFrom("plans").select("id").where("slug", "=", "all-access").executeTakeFirst();
   if (plan) {
+    await db
+      .updateTable("plans")
+      .set({
+        name: "Paket Akses Penuh (All-Access)",
+        description: "Akses penuh ke seluruh modul di katalog, termasuk modul eksklusif khusus pelanggan, selama masa langgananmu aktif.",
+        features: ["Akses semua modul saat ini dan modul baru mendatang", "Termasuk modul eksklusif khusus pelanggan", "Sertifikat kelulusan untuk setiap modul yang diselesaikan", "Bebas batalkan kapan saja tanpa penalti"],
+      })
+      .where("id", "=", plan.id)
+      .execute();
     for (const [interval, amt] of [["MONTH", 790000], ["YEAR", 7900000]] as const) {
       const found = await db.selectFrom("prices").select("id").where("sellable_type", "=", "PLAN").where("sellable_id", "=", plan.id).where("currency", "=", "IDR").where("interval", "=", interval).where("active", "=", true).executeTakeFirst();
       if (found) {
@@ -241,6 +379,19 @@ async function ensureIdrSeeded(adminId: string): Promise<void> {
         await db.insertInto("prices").values({ id: newId(), sellable_type: "PLAN", sellable_id: plan.id, currency: "IDR", amount_minor: amt, interval }).execute();
       }
     }
+  }
+
+  // 6. Sync Reviews & Q&A Threads to Bahasa Indonesia
+  const dbReviews = await db.selectFrom("reviews").select(["id"]).orderBy("id").execute();
+  for (const [ri, rev] of dbReviews.entries()) {
+    const [, body] = REVIEW_LINES[ri % REVIEW_LINES.length]!;
+    await db.updateTable("reviews").set({ body }).where("id", "=", rev.id).execute();
+  }
+  const dbThreads = await db.selectFrom("qa_threads").select(["id"]).orderBy("id").execute();
+  for (const [qi, qRow] of dbThreads.entries()) {
+    const thread = QA_THREADS[qi % QA_THREADS.length]!;
+    await db.updateTable("qa_threads").set({ title: thread.title, body: thread.body }).where("id", "=", qRow.id).execute();
+    await db.updateTable("qa_replies").set({ body: thread.answer }).where("thread_id", "=", qRow.id).where("is_staff", "=", true).execute();
   }
 
   const hemat = await db.selectFrom("coupons").select("id").where("code", "=", "HEMAT50RB").executeTakeFirst();
@@ -533,7 +684,7 @@ async function createCourse(c: DemoCourse, ci: number, categoryId: Map<string, s
       outcomes: c.outcomes,
       prerequisites: c.prerequisites,
       level: c.level,
-      language: "en",
+      language: "id",
       status: "PUBLISHED",
       access_mode: c.access,
       included_in_subscription: c.inPlan ?? true,
