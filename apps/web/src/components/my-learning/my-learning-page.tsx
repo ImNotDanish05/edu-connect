@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { Award, Bookmark, Download, GraduationCap } from "lucide-react";
+import { Award, Bookmark, CalendarCheck, Download, GraduationCap, Trophy } from "lucide-react";
 import { isApiError } from "@open-lms/api-client";
 import type { Certificate, CourseCard as CourseCardDto, LearningEntry, LearningSummary, Page as PageDto } from "@open-lms/types";
 import { Button, EmptyState, Skeleton, toast } from "@open-lms/ui";
@@ -14,19 +14,22 @@ import { UnderlineTabs } from "@/components/common/underline-tabs";
 import { CourseCard, CourseCardSkeleton, CourseGrid, courseHref } from "@/components/course/course-card";
 import { CourseCover } from "@/components/course/course-cover";
 import { ProgressLine } from "@/components/course/progress-line";
+import { OpportunityCard } from "@/components/educonnect/opportunities/opportunity-hub-page";
 import { Page, PageHeader } from "@/components/shell/layouts";
 import { api } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
+import { useEduconnectCounts, useSavedOpportunities } from "@/lib/educonnect/hooks";
 import { errorMessage } from "@/lib/errors";
 import { usePagedList } from "@/lib/hooks/queries";
 import { qk } from "@/lib/query-keys";
 
-type Tab = "in-progress" | "completed" | "saved" | "certificates";
+type Tab = "in-progress" | "completed" | "saved" | "opportunities" | "certificates";
 const TABS: { value: Tab; label: string }[] = [
-  { value: "in-progress", label: "In progress" },
-  { value: "completed", label: "Completed" },
-  { value: "saved", label: "Saved" },
-  { value: "certificates", label: "Certificates" },
+  { value: "in-progress", label: "Sedang Dipelajari" },
+  { value: "completed", label: "Selesai" },
+  { value: "saved", label: "Modul Tersimpan" },
+  { value: "opportunities", label: "Peluang Tersimpan" },
+  { value: "certificates", label: "Sertifikat" },
 ];
 
 const dateFmt = (iso: string) => new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso));
@@ -56,17 +59,128 @@ function MyLearning() {
   const raw = params?.get("tab") as Tab | null;
   const tab: Tab = raw && TABS.some((t) => t.value === raw) ? raw : "in-progress";
   const summary = useQuery({ queryKey: qk.mySummary, queryFn: () => api().my.summary(), meta: { silent: true } });
+  const eduCounts = useEduconnectCounts();
+
+  const modulesActive = (summary.data?.inProgress ?? 0) + (summary.data?.completed ?? 0);
+  const mentorSessions = eduCounts.data?.mentorSessions ?? summary.data?.mentorSessions ?? 0;
+  const savedOpps = eduCounts.data?.savedOpportunities ?? summary.data?.savedOpportunities ?? 0;
+  const certs = summary.data?.certificates ?? 0;
+
   return (
     <Page>
-      <PageHeader title="My learning" lead={summary.data ? <span data-testid="my-learning-summary">{summaryLine(summary.data)}</span> : <Skeleton className="h-4 w-80" />} />
-      <UnderlineTabs label="My learning" tabs={TABS.map((t) => ({ ...t, href: t.value === "in-progress" ? "/my-learning" : `/my-learning?tab=${t.value}` }))} value={tab} />
+      <PageHeader
+        title="Belajarku"
+        lead={
+          summary.data ? (
+            <span data-testid="my-learning-summary">{summaryLine(summary.data)}</span>
+          ) : (
+            <Skeleton className="h-4 w-80" />
+          )
+        }
+      />
+
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="educonnect-stats-grid">
+        <div className="rounded-card border border-border bg-card p-4 shadow-card">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[12.5px] font-medium">Modul Dipelajari</span>
+            <GraduationCap className="size-4 text-primary" aria-hidden />
+          </div>
+          <p className="mt-1.5 font-display text-[24px] font-semibold tabular-nums">{modulesActive}</p>
+        </div>
+
+        <Link
+          href="/mentoring"
+          data-testid="stat-mentor-sessions"
+          className="rounded-card border border-border bg-card p-4 shadow-card transition-colors hover:border-primary/40"
+        >
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[12.5px] font-medium">Sesi Mentoring</span>
+            <CalendarCheck className="size-4 text-emerald-600" aria-hidden />
+          </div>
+          <p className="mt-1.5 font-display text-[24px] font-semibold tabular-nums">{mentorSessions}</p>
+        </Link>
+
+        <Link
+          href="/my-learning?tab=opportunities"
+          data-testid="stat-saved-opportunities"
+          className="rounded-card border border-border bg-card p-4 shadow-card transition-colors hover:border-primary/40"
+        >
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[12.5px] font-medium">Peluang Tersimpan</span>
+            <Trophy className="size-4 text-amber-500" aria-hidden />
+          </div>
+          <p className="mt-1.5 font-display text-[24px] font-semibold tabular-nums">{savedOpps}</p>
+        </Link>
+
+        <Link
+          href="/my-learning?tab=certificates"
+          className="rounded-card border border-border bg-card p-4 shadow-card transition-colors hover:border-primary/40"
+        >
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[12.5px] font-medium">Sertifikat</span>
+            <Award className="size-4 text-sky-500" aria-hidden />
+          </div>
+          <p className="mt-1.5 font-display text-[24px] font-semibold tabular-nums">{certs}</p>
+        </Link>
+      </div>
+
+      <UnderlineTabs
+        label="My learning"
+        tabs={TABS.map((t) => ({ ...t, href: t.value === "in-progress" ? "/my-learning" : `/my-learning?tab=${t.value}` }))}
+        value={tab}
+      />
       <div className="pt-6">
         {tab === "in-progress" ? <EntryList status="in_progress" /> : null}
         {tab === "completed" ? <EntryList status="completed" /> : null}
         {tab === "saved" ? <SavedTab /> : null}
+        {tab === "opportunities" ? <SavedOpportunitiesTab /> : null}
         {tab === "certificates" ? <CertificatesTab /> : null}
       </div>
     </Page>
+  );
+}
+
+function SavedOpportunitiesTab() {
+  const saved = useSavedOpportunities();
+  if (saved.isPending) {
+    return (
+      <div className="grid gap-5 sm:grid-cols-2">
+        {Array.from({ length: 2 }, (_, i) => (
+          <Skeleton key={i} className="h-56 rounded-card" />
+        ))}
+      </div>
+    );
+  }
+  if (!saved.data?.length) {
+    return (
+      <EmptyState
+        icon={<Trophy />}
+        title="Belum ada peluang beasiswa atau lomba yang disimpan"
+        description="Klik ikon bookmark pada peluang di Opportunity Hub agar kamu tidak ketinggalan batas waktunya."
+        action={
+          <Button asChild>
+            <Link href="/opportunities">Buka Opportunity Hub</Link>
+          </Button>
+        }
+      />
+    );
+  }
+  return (
+    <div className="space-y-4" data-testid="saved-opportunities-tab">
+      <div className="flex items-center justify-between">
+        <p className="text-[13.5px] text-muted-foreground">
+          Menampilkan {saved.data.length} peluang tersimpan (termasuk peluang yang sudah melewati batas waktu).
+        </p>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/opportunities">Cari Peluang Lainnya</Link>
+        </Button>
+      </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        {saved.data.map((opp) => (
+          <OpportunityCard key={opp.id} opportunity={opp} />
+        ))}
+      </div>
+    </div>
   );
 }
 

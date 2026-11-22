@@ -231,8 +231,8 @@ async function seed(password: string): Promise<void> {
   const admin = await insertUser(hash, "Ada Northwind", "ADMIN", { email: ADMIN_EMAIL, headline: "Academy administrator" });
   await saveSettings(
     {
-      academyName: "Northwind Academy",
-      tagline: "Practical courses you can finish, from people who do the work.",
+      academyName: "Edu Connect",
+      tagline: "Satu Platform untuk Belajar, Bimbingan Mentor, dan Raih Prestasi.",
       supportEmail: "help@northwind.example",
       currencies: { enabled: ["USD", "INR"], default: "USD" },
       gateways: { routing: { INR: "RAZORPAY", USD: "STRIPE" }, fallback: "STRIPE" },

@@ -1,14 +1,17 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Camera, X } from "lucide-react";
 import { isApiError } from "@open-lms/api-client";
+import { EDUCATION_LEVELS, EDUCATION_LEVEL_LABELS, type EducationLevel, type InterestTag } from "@open-lms/types";
 import { Avatar, Button, Field, Input, NativeSelect, Spinner, Textarea, toast } from "@open-lms/ui";
+import { InterestPicker } from "@/components/educonnect/common/interest-picker";
 import { api } from "@/lib/api";
 import { useAuth, useMe } from "@/lib/auth";
+import { useStudentProfile, useUpdateStudentProfile } from "@/lib/educonnect/hooks";
 import { errorMessage } from "@/lib/errors";
 import { useUploads } from "@/lib/hooks/use-uploads";
 import { useAcademyMeta } from "@/lib/meta";
@@ -49,6 +52,25 @@ export function ProfileSection() {
   const meta = useAcademyMeta();
   const avatar = useUploads("AVATAR", { max: 1, accept: (m) => m.startsWith("image/") });
   const avatarRef = useRef<HTMLInputElement>(null);
+
+  const studentProfile = useStudentProfile();
+  const saveStudentProfile = useUpdateStudentProfile();
+  const [educationLevel, setEducationLevel] = useState<EducationLevel | "">("SMA");
+  const [gradeYear, setGradeYear] = useState<string>("11");
+  const [interests, setInterests] = useState<InterestTag[]>([]);
+  const [learningGoals, setLearningGoals] = useState<string>("");
+  const [learningDirty, setLearningDirty] = useState(false);
+
+  useEffect(() => {
+    if (studentProfile.data) {
+      setEducationLevel(studentProfile.data.educationLevel ?? "");
+      setGradeYear(studentProfile.data.gradeYear ? String(studentProfile.data.gradeYear) : "");
+      setInterests(studentProfile.data.interests ?? []);
+      setLearningGoals(studentProfile.data.learningGoals ?? "");
+      setLearningDirty(false);
+    }
+  }, [studentProfile.data]);
+
   const values: Values = {
     displayName: me.displayName,
     certificateName: me.certificateName ?? "",
@@ -62,8 +84,30 @@ export function ProfileSection() {
   const watched = form.watch();
   const preview = certificateNameFor(watched);
 
+  const onSaveLearningProfile = async () => {
+    const parsedYear = gradeYear.trim() ? Number(gradeYear) : null;
+    if (parsedYear !== null && (!Number.isInteger(parsedYear) || parsedYear < 1 || parsedYear > 14)) {
+      toast.error({ title: "Kelas / Semester harus antara 1 sampai 14" });
+      return;
+    }
+    await saveStudentProfile.mutateAsync({
+      educationLevel: educationLevel || null,
+      gradeYear: parsedYear,
+      interests,
+      learningGoals: learningGoals.trim() || null,
+    });
+    setLearningDirty(false);
+    toast.success({
+      title: "Profil Belajar disimpan",
+      description: "Skor kecocokan mentor dan rekomendasi telah diperbarui.",
+    });
+  };
+
   const onSubmit = async (v: Values) => {
     try {
+      if (learningDirty) {
+        await onSaveLearningProfile();
+      }
       const updated = await api().users.updateMe({
         displayName: v.displayName.trim(),
         certificateName: nullable(v.certificateName),
@@ -92,12 +136,99 @@ export function ProfileSection() {
   };
 
   const avatarPreview = avatar.items[0]?.previewUrl ?? me.avatarUrl;
-  const dirty = form.formState.isDirty || avatar.mediaIds.length > 0;
+  const dirty = form.formState.isDirty || avatar.mediaIds.length > 0 || learningDirty;
   const currencies = meta.data?.currencies ?? [];
 
   return (
     <div>
-      <SectionTitle title="Profile" lead="How you appear to instructors and other learners, and the name on your certificates." />
+      <SectionTitle title="Profil & Preferensi Belajar" lead="Atur jenjang pendidikan, minat bidang studi, dan profil publikmu di EduConnect." />
+
+      <AccountSection
+        title="Profil Belajar (EduConnect)"
+        description="Digunakan untuk menghitung skor kecocokan mentor 1-on-1 dan menyaring peluang beasiswa & lomba yang sesuai dengan jenjangmu."
+      >
+        <div className="max-w-[560px] space-y-4" data-testid="educonnect-learning-profile">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Jenjang Pendidikan" htmlFor="educationLevel">
+              <NativeSelect
+                id="educationLevel"
+                value={educationLevel}
+                onChange={(e) => {
+                  setEducationLevel(e.target.value as EducationLevel | "");
+                  setLearningDirty(true);
+                }}
+                data-testid="profile-education-level"
+              >
+                <option value="">Pilih jenjang...</option>
+                {EDUCATION_LEVELS.map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {EDUCATION_LEVEL_LABELS[lvl]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field label="Kelas / Semester" htmlFor="gradeYear" hint="Kelas 1–12 atau Semester kuliah (1–14)" optional>
+              <Input
+                id="gradeYear"
+                type="number"
+                min={1}
+                max={14}
+                value={gradeYear}
+                onChange={(e) => {
+                  setGradeYear(e.target.value);
+                  setLearningDirty(true);
+                }}
+                placeholder="Contoh: 11"
+                data-testid="profile-grade-year"
+              />
+            </Field>
+          </div>
+
+          <Field label="Minat Bidang Studi & Pengembangan Diri" htmlFor="profile-interests" hint="Pilih maksimal 10 topik yang ingin kamu pelajari atau diskusikan bersama mentor">
+            <InterestPicker
+              value={interests}
+              onChange={(next) => {
+                setInterests(next);
+                setLearningDirty(true);
+              }}
+            />
+          </Field>
+
+          <Field
+            label="Target Belajar"
+            htmlFor="learningGoals"
+            hint="Sebutkan target spesifikmu (mis. Lolos SNBT Akuntansi FEB UNDIP, juara OSN Ekonomi)"
+            optional
+          >
+            <Textarea
+              id="learningGoals"
+              rows={3}
+              maxLength={500}
+              value={learningGoals}
+              onChange={(e) => {
+                setLearningGoals(e.target.value);
+                setLearningDirty(true);
+              }}
+              placeholder="Tuliskan target belajarmu..."
+              data-testid="profile-learning-goals"
+            />
+          </Field>
+
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void onSaveLearningProfile()}
+              loading={saveStudentProfile.isPending}
+              disabled={!learningDirty}
+              data-testid="save-learning-profile"
+            >
+              Simpan Profil Belajar
+            </Button>
+          </div>
+        </div>
+      </AccountSection>
+
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <AccountSection title="Photo and name">
           <div className="flex items-start gap-5">

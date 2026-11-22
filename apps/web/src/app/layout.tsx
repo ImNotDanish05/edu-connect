@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/env.js" nonce={nonce} suppressHydrationWarning />
       </head>
-      <body className="min-h-dvh font-sans">
+      <body suppressHydrationWarning className="min-h-dvh font-sans">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -1,6 +1,6 @@
 /** The admin sidebar model: groups of areas, filtered by what the session permits. Pure (tested). */
 import {
-  Award, BookOpen, ClipboardCheck, FolderTree, Gauge, Package, Receipt, ScrollText, Settings2, ShieldAlert, Ticket, UserCog, Users, type LucideIcon,
+  Award, BookOpen, ClipboardCheck, FolderTree, Gauge, Gift, Package, Receipt, ScrollText, Settings2, ShieldAlert, Ticket, Trophy, UserCog, Users, type LucideIcon,
 } from "lucide-react";
 import type { AdminArea, AdminSession } from "@open-lms/types";
 
@@ -36,6 +36,14 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { area: "learners", href: "/admin/learners", label: "Learners", icon: Users },
       { area: "certificates", href: "/admin/certificates", label: "Certificates", icon: Award },
       { area: "moderation", href: "/admin/moderation", label: "Moderation", icon: ShieldAlert },
+    ],
+  },
+  {
+    label: "EduConnect",
+    items: [
+      { area: "moderation", href: "/admin/mentors", label: "Mentors", icon: Users },
+      { area: "moderation", href: "/admin/opportunities", label: "Opportunities", icon: Trophy },
+      { area: "moderation", href: "/admin/kitbox", label: "KitBox", icon: Gift },
     ],
   },
   {

@@ -106,6 +106,12 @@ export interface Me extends UserSummary {
   canOpenAdmin: boolean;
   /** The learner's live subscription, if any (drives "Included in your plan" badges). */
   subscription: SubscriptionSummary | null;
+  /** EduConnect student learning profile fields (optional while backend migration is pending). */
+  educationLevel?: EducationLevel | null;
+  gradeYear?: number | null;
+  interests?: InterestTag[];
+  learningGoals?: string | null;
+  isMentor?: boolean;
 }
 
 /** GET /api/meta: public facts about this academy, for page titles, checkout and sign-up. */
@@ -199,5 +205,7 @@ export interface NotificationCounts {
 export * from "./learning";
 export * from "./commerce";
 export * from "./admin";
+export * from "./educonnect";
 
 import type { SubscriptionSummary } from "./commerce";
+import type { EducationLevel, InterestTag } from "./educonnect";

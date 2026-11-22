@@ -22,8 +22,8 @@ const groups = (s: AdminSession) => visibleNav(s).map((g) => g.label);
 
 describe("permission-filtered sidebar", () => {
   it("shows an admin every area, in groups", () => {
-    expect(groups(session("ADMIN"))).toEqual([null, "Teaching", "Learners", "Commerce", "Academy"]);
-    expect(labels(session("ADMIN"))).toEqual(["Overview", "Courses", "Categories", "Grading", "Learners", "Certificates", "Moderation", "Orders", "Plans and bundles", "Coupons", "Staff", "Settings", "Audit log"]);
+    expect(groups(session("ADMIN"))).toEqual([null, "Teaching", "Learners", "EduConnect", "Commerce", "Academy"]);
+    expect(labels(session("ADMIN"))).toEqual(["Overview", "Courses", "Categories", "Grading", "Learners", "Certificates", "Moderation", "Mentors", "Opportunities", "KitBox", "Orders", "Plans and bundles", "Coupons", "Staff", "Settings", "Audit log"]);
   });
   it("shows an instructor only their teaching areas, without categories", () => {
     expect(labels(session("INSTRUCTOR"))).toEqual(["Overview", "Courses", "Grading"]);

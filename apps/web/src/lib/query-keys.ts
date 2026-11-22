@@ -52,6 +52,23 @@ export const qk = {
   invoices: ["invoices"] as const,
   subscription: ["subscription"] as const,
 
+  // EduConnect
+  educonnectProfile: ["educonnect-profile"] as const,
+  educonnectCounts: ["educonnect-counts"] as const,
+  mentors: (f?: F) => ["mentors", f ?? {}] as const,
+  mentorsAll: ["mentors"] as const,
+  mentor: (username: string) => ["mentors", "detail", username] as const,
+  mentorSlots: (username: string) => ["mentors", "slots", username] as const,
+  mySessions: (asRole: string, status?: string) => ["my-sessions", asRole, status ?? "ALL"] as const,
+  mySessionsAll: ["my-sessions"] as const,
+  opportunities: (f?: F) => ["opportunities", f ?? {}] as const,
+  opportunitiesAll: ["opportunities"] as const,
+  opportunity: (slug: string) => ["opportunities", "detail", slug] as const,
+  mySavedOpportunities: ["my-saved-opportunities"] as const,
+  kitboxPackages: ["kitbox-packages"] as const,
+  kitboxImpact: ["kitbox-impact"] as const,
+  myKitbox: ["my-kitbox"] as const,
+
   // Admin
   admin: {
     session: ["admin", "session"] as const,

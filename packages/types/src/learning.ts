@@ -309,6 +309,9 @@ export interface LearningSummary {
   minutesThisWeek: number;
   /** Consecutive days with learning activity, ending today or yesterday. */
   streakDays: number;
+  /** EduConnect Feature 1.6 stats (optional while backend migration is pending). */
+  mentorSessions?: number;
+  savedOpportunities?: number;
 }
 
 // ─── Quizzes ────────────────────────────────────────────────────────────────
