@@ -124,7 +124,7 @@ export function CatalogPage() {
   return (
     <main id="main" className="min-w-0 pb-16">
       <div className="mx-auto w-full max-w-[1200px] px-4 pt-8 sm:px-6">
-        <h1 className="font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] sm:text-[40px]">{state.q ? <>Results for &ldquo;{state.q}&rdquo;</> : "Courses"}</h1>
+        <h1 className="font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.02em] sm:text-[40px]">{state.q ? <>Hasil untuk &ldquo;{state.q}&rdquo;</> : "Modul"}</h1>
         <form
           role="search"
           className="relative mt-5 max-w-2xl"
