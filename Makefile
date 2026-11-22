@@ -3,7 +3,8 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
 COMPOSE_DIR := deploy/compose
-FLOCI       := docker compose --env-file $(COMPOSE_DIR)/.env -f $(COMPOSE_DIR)/compose.yaml -f $(COMPOSE_DIR)/compose.floci.yaml
+COMPOSE     := docker compose --env-file $(COMPOSE_DIR)/.env -f $(COMPOSE_DIR)/compose.yaml
+FLOCI       := $(COMPOSE) -f $(COMPOSE_DIR)/compose.floci.yaml
 AWS_LOCAL   := docker compose --env-file $(COMPOSE_DIR)/.env --env-file $(COMPOSE_DIR)/.env.aws -f $(COMPOSE_DIR)/compose.yaml -f $(COMPOSE_DIR)/compose.aws.yaml
 TF_IMAGE    := hashicorp/terraform:1.16.6
 TFLINT      := docker run --rm -v $(CURDIR)/infra/terraform:/data -v open-lms-tflint:/plugins -e TFLINT_PLUGIN_DIR=/plugins -w /data ghcr.io/terraform-linters/tflint:v0.64.0
@@ -18,7 +19,7 @@ REDIS_PORT  := $${LMS_REDIS_PORT:-6429}
 TEST_DB     ?= postgres://lms:lms@localhost:$(PG_PORT)/lms_test
 TEST_REDIS  ?= redis://localhost:$(REDIS_PORT)/1
 
-.PHONY: help env up dev-up up-aws down logs ps demo admin test test-integration test-matrix e2e lint typecheck build openapi \
+.PHONY: help env up legacy-up dev-up up-aws down logs ps demo admin test test-integration test-matrix e2e lint typecheck build openapi \
         sanitize tf-fmt tf-validate tf-lint tf-security aws-plan aws-deploy aws-migrate aws-admin clean
 
 help: ## Show this help
@@ -42,7 +43,17 @@ dev-up: env ## Start background services only (Postgres, Redis, Mailpit, Stubs) 
 	@echo "    pnpm --filter @open-lms/api dev   (port $${LMS_API_PORT:-5026})"
 	@echo "    pnpm --filter @open-lms/web dev   (port $${LMS_WEB_PORT:-3530})"
 
-up: env ## Start everything on emulated AWS (Floci), provisioned by the same Terraform as production
+up: env ## Start standalone stack (Postgres, Redis, Mailpit, Stubs, API, Web, Worker) without Terraform/Floci
+	$(COMPOSE) up -d --build
+	@echo ""
+	@echo "  app      http://localhost:$${LMS_WEB_PORT:-3530}"
+	@echo "  api      http://localhost:$${LMS_API_PORT:-5026}/api/ready"
+	@echo "  mail     http://localhost:$${LMS_MAILPIT_PORT:-8046}"
+	@echo "  stubs    http://localhost:$${LMS_STUB_PORT:-5119}  (Stripe, Razorpay, AI and video stand-ins)"
+	@echo ""
+	@echo "  Next: make demo   (a demo academy: courses, learners, orders and certificates)"
+
+legacy-up: env ## Legacy stack: start everything on emulated AWS (Floci) provisioned by Terraform
 	$(FLOCI) up -d --build --wait
 	@echo ""
 	@echo "  app      http://localhost:$${LMS_WEB_PORT:-3530}"
@@ -58,24 +69,25 @@ up-aws: env ## Start the stack against real AWS resources (needs deploy/compose/
 	$(AWS_LOCAL) up -d --build --wait
 
 down: ## Stop the stack and delete its volumes
-	-$(FLOCI) down -v --remove-orphans
+	-$(COMPOSE) down -v --remove-orphans
+	-$(FLOCI) down -v --remove-orphans 2>/dev/null
 	-$(AWS_LOCAL) down -v --remove-orphans 2>/dev/null
 
-logs: ## Tail logs (SERVICE=api|worker|web|stubs|migrate|floci|terraform|...)
-	$(FLOCI) logs -f --tail 100 $(SERVICE)
+logs: ## Tail logs (SERVICE=api|worker|web|stubs|migrate|...)
+	$(COMPOSE) logs -f --tail 100 $(SERVICE)
 
 ps: ## Show stack status
-	$(FLOCI) ps -a
+	$(COMPOSE) ps -a
 
 demo: ## Seed the demo academy: courses, instructors, learners, orders, reviews (prints the logins)
 	@pw=$$(grep '^LMS_DEMO_PASSWORD=' $(COMPOSE_DIR)/.env | cut -d= -f2-); \
-	$(FLOCI) exec -T -e DEMO_PASSWORD="$$pw" api node dist/cli.js demo:seed && \
+	$(COMPOSE) exec -T -e DEMO_PASSWORD="$$pw" api node dist/cli.js demo:seed && \
 	echo "" && echo "  Every demo account signs in with the password: $$pw" && \
 	echo "  (LMS_DEMO_PASSWORD in $(COMPOSE_DIR)/.env)"
 
 admin: ## Create or promote an administrator on the local stack (EMAIL=you@example.com)
 	@test -n "$(EMAIL)" || { echo "usage: make admin EMAIL=you@example.com"; exit 1; }
-	$(FLOCI) exec -T api node dist/cli.js admin:create --email "$(EMAIL)"
+	$(COMPOSE) exec -T api node dist/cli.js admin:create --email "$(EMAIL)"
 
 # ─── Quality ─────────────────────────────────────────────────────────────────
 
