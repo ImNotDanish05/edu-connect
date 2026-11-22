@@ -7,9 +7,11 @@ describe("money helpers", () => {
   it("knows minor-unit exponents", () => {
     expect(minorExponent("USD")).toBe(2);
     expect(minorExponent("inr")).toBe(2);
+    expect(minorExponent("IDR")).toBe(2);
     expect(minorExponent("JPY")).toBe(0);
     expect(minorExponent("KWD")).toBe(3);
     expect(formatMinor(499900, "INR")).toBe("4999.00");
+    expect(formatMinor(990000, "IDR")).toBe("9900.00");
     expect(formatMinor(1200, "JPY")).toBe("1200");
     expect(formatMinor(1234, "KWD")).toBe("1.234");
   });

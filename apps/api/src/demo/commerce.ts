@@ -49,16 +49,25 @@ function target(rand: () => number): number {
   return 1;
 }
 
+export const DEMO_BUNDLES = [
+  { slug: "data-career-starter", title: "Data Career Starter", description: "SQL, statistics and machine learning: the three courses most analysts take first, together.", courses: ["practical-sql", "statistics-for-decisions", "machine-learning-foundations"], usd: 12900, inr: 999900, idr: 2990000 },
+  { slug: "production-ready-engineer", title: "Production-Ready Engineer", description: "Types, APIs and containers: everything between your editor and a calm on-call week.", courses: ["modern-typescript", "building-reliable-apis", "containers-and-kubernetes"], usd: 16900, inr: 1299900, idr: 3990000 },
+] as const;
+
+type DemoCurrency = "IDR" | "USD" | "INR";
+const countryOf = (c: DemoCurrency) => (c === "IDR" ? "ID" : c === "INR" ? "IN" : "US");
+const planAmount = (c: DemoCurrency, interval: "MONTH" | "YEAR") =>
+  c === "IDR" ? (interval === "YEAR" ? 7900000 : 790000) : c === "USD" ? (interval === "YEAR" ? 19000 : 1900) : interval === "YEAR" ? 1499900 : 149900;
+const bundleAmount = (b: (typeof DEMO_BUNDLES)[number], c: DemoCurrency) => (c === "IDR" ? b.idr : c === "INR" ? b.inr : b.usd);
+const courseAmount = (course: SeededCourse, c: DemoCurrency) => (c === "IDR" ? course.idr : c === "INR" ? course.inr : course.usd);
+
 export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnrollment[]; orders: number }> {
   const { catalog, learners, now, int, pick, sample, rand } = ctx;
   const bySlug = new Map(catalog.courses.map((c) => [c.slug, c]));
   const settings = await getSettings();
 
   // ── Bundles ───────────────────────────────────────────────────────────
-  const bundles = [
-    { slug: "data-career-starter", title: "Data Career Starter", description: "SQL, statistics and machine learning: the three courses most analysts take first, together.", courses: ["practical-sql", "statistics-for-decisions", "machine-learning-foundations"], usd: 12900, inr: 999900 },
-    { slug: "production-ready-engineer", title: "Production-Ready Engineer", description: "Types, APIs and containers: everything between your editor and a calm on-call week.", courses: ["modern-typescript", "building-reliable-apis", "containers-and-kubernetes"], usd: 16900, inr: 1299900 },
-  ];
+  const bundles = DEMO_BUNDLES;
   const bundleIds = new Map<string, string>();
   for (const b of bundles) {
     const id = newId();
@@ -66,6 +75,7 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
     await db.insertInto("bundles").values({ id, slug: b.slug, title: b.title, description: b.description, status: "ACTIVE" }).execute();
     for (const [i, s] of b.courses.entries()) await db.insertInto("bundle_courses").values({ bundle_id: id, course_id: bySlug.get(s)!.id, position: i }).execute();
     await db.insertInto("prices").values([
+      { id: newId(), sellable_type: "BUNDLE", sellable_id: id, currency: "IDR", amount_minor: b.idr },
       { id: newId(), sellable_type: "BUNDLE", sellable_id: id, currency: "USD", amount_minor: b.usd },
       { id: newId(), sellable_type: "BUNDLE", sellable_id: id, currency: "INR", amount_minor: b.inr },
     ]).execute();
@@ -78,10 +88,13 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
     .values({ id: planId, slug: "all-access", name: "All-Access", description: "Every course in the catalog, including the members-only ones, for as long as you are subscribed.", features: ["Every current and future course", "Members-only courses", "Certificates for everything you finish", "Cancel any time"], trial_days: 7, status: "ACTIVE" })
     .execute();
   const planPrices = {
+    IDR: { MONTH: newId(), YEAR: newId() },
     USD: { MONTH: newId(), YEAR: newId() },
     INR: { MONTH: newId(), YEAR: newId() },
   };
   await db.insertInto("prices").values([
+    { id: planPrices.IDR.MONTH, sellable_type: "PLAN", sellable_id: planId, currency: "IDR", amount_minor: 790000, interval: "MONTH" },
+    { id: planPrices.IDR.YEAR, sellable_type: "PLAN", sellable_id: planId, currency: "IDR", amount_minor: 7900000, interval: "YEAR" },
     { id: planPrices.USD.MONTH, sellable_type: "PLAN", sellable_id: planId, currency: "USD", amount_minor: 1900, interval: "MONTH" },
     { id: planPrices.USD.YEAR, sellable_type: "PLAN", sellable_id: planId, currency: "USD", amount_minor: 19000, interval: "YEAR" },
     { id: planPrices.INR.MONTH, sellable_type: "PLAN", sellable_id: planId, currency: "INR", amount_minor: 149900, interval: "MONTH" },
@@ -92,6 +105,7 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
   const welcome = newId();
   await db.insertInto("coupons").values([
     { id: welcome, code: "WELCOME20", description: "20% off your first course", kind: "PERCENT", percent_off: 20, scope: "COURSES", max_redemptions: 500, per_user_limit: 1, created_by: ctx.admin },
+    { id: newId(), code: "HEMAT50RB", description: "Potongan Rp 5.000 untuk kursus apa saja", kind: "FIXED", amount_off_minor: 500000, currency: "IDR", scope: "COURSES", per_user_limit: 1, created_by: ctx.admin },
     { id: newId(), code: "INR500", description: "₹500 off any course", kind: "FIXED", amount_off_minor: 50000, currency: "INR", scope: "COURSES", per_user_limit: 1, created_by: ctx.admin },
     { id: newId(), code: "BUNDLE15", description: "15% off bundles", kind: "PERCENT", percent_off: 15, scope: "BUNDLES", per_user_limit: 1, expires_at: new Date(now + 45 * DAY), created_by: ctx.admin },
   ]).execute();
@@ -105,10 +119,10 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
   // Learners 0..5 subscribe (0..3 active, 4 cancels at period end, 5 past due).
   const subscribers = learners.slice(0, 6);
   for (const [i, l] of subscribers.entries()) {
-    const currency = l.inr ? "INR" : "USD";
+    const currency: DemoCurrency = l.currency;
     const interval = i === 2 ? "YEAR" : "MONTH";
     const priceId = planPrices[currency][interval];
-    const amount = currency === "USD" ? (interval === "YEAR" ? 19000 : 1900) : interval === "YEAR" ? 1499900 : 149900;
+    const amount = planAmount(currency, interval);
     const start = new Date(now - int(3, 24) * DAY);
     const periodEnd = new Date(start.getTime() + (interval === "YEAR" ? 365 : 30) * DAY);
     const subId = newId();
@@ -133,7 +147,7 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
         created_at: start,
       })
       .execute();
-    const orderId = await createOrder({ userId: l.id, kind: "SUBSCRIPTION", currency, lines: [{ type: "PLAN", id: planId, title: "All-Access", unit: amount, priceId }], couponId: null, couponCode: null, country: l.inr ? "IN" : "US", name: l.name, settings, at: start, planId, priceId });
+    const orderId = await createOrder({ userId: l.id, kind: "SUBSCRIPTION", currency, lines: [{ type: "PLAN", id: planId, title: "All-Access", unit: amount, priceId }], couponId: null, couponCode: null, country: countryOf(currency), name: l.name, settings, at: start, planId, priceId });
     await fulfilDemoOrder(orderId, start);
     await db.updateTable("subscriptions").set({ first_order_id: orderId }).where("id", "=", subId).execute();
     orders++;
@@ -152,7 +166,7 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
 
   // Everyone else: free courses, single purchases, a few bundles and admin grants.
   for (const [i, l] of learners.slice(6).entries()) {
-    const currency = l.inr ? "INR" : "USD";
+    const currency: DemoCurrency = l.currency;
     for (const c of sample(free, int(0, 2))) {
       await withTransaction((trx, fx) => grantEnrollment({ userId: l.id, courseId: c.id, source: "FREE" }, trx, fx));
       planned.push({ userId: l.id, courseId: c.id, target: target(rand) });
@@ -161,13 +175,13 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
       const b = bundles[i % 2]!;
       const bid = bundleIds.get(b.slug)!;
       const at = new Date(now - int(5, 50) * DAY);
-      const orderId = await createOrder({ userId: l.id, kind: "ONE_TIME", currency, lines: [{ type: "BUNDLE", id: bid, title: b.title, unit: currency === "USD" ? b.usd : b.inr, priceId: null }], couponId: null, couponCode: null, country: l.inr ? "IN" : "US", name: l.name, settings, at, planId: null, priceId: null });
+      const orderId = await createOrder({ userId: l.id, kind: "ONE_TIME", currency, lines: [{ type: "BUNDLE", id: bid, title: b.title, unit: bundleAmount(b, currency), priceId: null }], couponId: null, couponCode: null, country: countryOf(currency), name: l.name, settings, at, planId: null, priceId: null });
       await fulfilDemoOrder(orderId, at);
       orders++;
       for (const s of b.courses) planned.push({ userId: l.id, courseId: bySlug.get(s)!.id, target: target(rand) });
       continue;
     }
-    const buys = sample(paid.filter((c) => (currency === "USD" ? c.usd : c.inr)), int(1, 3));
+    const buys = sample(paid.filter((c) => courseAmount(c, currency)), int(1, 3));
     for (const [bi, c] of buys.entries()) {
       const at = new Date(now - int(2, 58) * DAY);
       const useCoupon = bi === 0 && rand() < 0.3;
@@ -175,10 +189,10 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
         userId: l.id,
         kind: "ONE_TIME",
         currency,
-        lines: [{ type: "COURSE", id: c.id, title: c.title, unit: (currency === "USD" ? c.usd : c.inr)!, priceId: null }],
+        lines: [{ type: "COURSE", id: c.id, title: c.title, unit: courseAmount(c, currency)!, priceId: null }],
         couponId: useCoupon ? welcome : null,
         couponCode: useCoupon ? "WELCOME20" : null,
-        country: l.inr ? "IN" : "US",
+        country: countryOf(currency),
         name: l.name,
         settings,
         at,
@@ -203,7 +217,7 @@ export async function seedCommerce(ctx: Ctx): Promise<{ enrollments: PlannedEnro
   // An abandoned checkout, so the orders list shows every state.
   const l = learners[7]!;
   const c = paid[0]!;
-  await createOrder({ userId: l.id, kind: "ONE_TIME", currency: "USD", lines: [{ type: "COURSE", id: c.id, title: c.title, unit: c.usd ?? 4900, priceId: null }], couponId: null, couponCode: null, country: "US", name: l.name, settings, at: new Date(now - 2 * DAY), planId: null, priceId: null, status: "EXPIRED" });
+  await createOrder({ userId: l.id, kind: "ONE_TIME", currency: "IDR", lines: [{ type: "COURSE", id: c.id, title: c.title, unit: c.idr ?? 1490000, priceId: null }], couponId: null, couponCode: null, country: "ID", name: l.name, settings, at: new Date(now - 2 * DAY), planId: null, priceId: null, status: "EXPIRED" });
 
   return { enrollments: dedupe(planned), orders };
 }

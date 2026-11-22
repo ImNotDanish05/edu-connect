@@ -37,7 +37,7 @@ import { hashPassword } from "../security/passwords";
 import { markItemComplete } from "../services/progress.service";
 import { saveSettings } from "../services/settings.service";
 import { CATEGORIES, COURSES, INSTRUCTORS, LEARNERS, QA_THREADS, REVIEW_LINES, type DemoCourse, type DemoItem, type DemoQuestion } from "./content";
-import { seedCommerce, type SeededCatalog } from "./commerce";
+import { DEMO_BUNDLES, seedCommerce, type SeededCatalog } from "./commerce";
 
 const ADMIN_EMAIL = "admin@example.com";
 const DAY = 86_400_000;
@@ -154,6 +154,7 @@ export interface DemoUser {
   id: string;
   name: string;
   email: string;
+  currency: "IDR" | "USD" | "INR";
   /** Learners in India pay in INR through Razorpay. */
   inr: boolean;
 }
@@ -183,11 +184,175 @@ function printLogins(password: string | null, fresh: boolean): void {
   process.stdout.write(lines.join("\n") + "\n");
 }
 
+/**
+ * Idempotent upgrade for an already-seeded demo database: ensures IDR is enabled as the
+ * default currency, adds Indonesia PPN 11% tax rule, and backfills IDR prices + coupon.
+ */
+async function ensureIdrSeeded(adminId: string): Promise<void> {
+  await saveSettings(
+    {
+      currencies: { enabled: ["IDR", "USD", "INR"], default: "IDR" },
+      gateways: { routing: { INR: "RAZORPAY", USD: "STRIPE", IDR: "STRIPE" }, fallback: "STRIPE" },
+      tax: {
+        enabled: true,
+        mode: "EXCLUSIVE",
+        rules: [
+          { country: "ID", rateBps: 1100, label: "PPN" },
+          { country: "IN", rateBps: 1800, label: "GST" },
+        ],
+      },
+    },
+    adminId,
+  );
+
+  const dbCourses = await db.selectFrom("courses").select(["id", "slug"]).execute();
+  const bySlug = new Map(COURSES.map((c) => [c.slug, c]));
+  for (const row of dbCourses) {
+    const def = bySlug.get(row.slug);
+    if (!def?.idr) continue;
+    const found = await db.selectFrom("prices").select("id").where("sellable_type", "=", "COURSE").where("sellable_id", "=", row.id).where("currency", "=", "IDR").where("active", "=", true).executeTakeFirst();
+    if (found) {
+      await db.updateTable("prices").set({ amount_minor: def.idr, compare_at_minor: def.compareIdr ?? null }).where("id", "=", found.id).execute();
+    } else {
+      await db.insertInto("prices").values({ id: newId(), sellable_type: "COURSE", sellable_id: row.id, currency: "IDR", amount_minor: def.idr, compare_at_minor: def.compareIdr ?? null }).execute();
+    }
+  }
+
+  const dbBundles = await db.selectFrom("bundles").select(["id", "slug"]).execute();
+  const bundleBySlug = new Map(DEMO_BUNDLES.map((b) => [b.slug, b]));
+  for (const row of dbBundles) {
+    const def = bundleBySlug.get(row.slug as (typeof DEMO_BUNDLES)[number]["slug"]);
+    if (!def?.idr) continue;
+    const found = await db.selectFrom("prices").select("id").where("sellable_type", "=", "BUNDLE").where("sellable_id", "=", row.id).where("currency", "=", "IDR").where("active", "=", true).executeTakeFirst();
+    if (found) {
+      await db.updateTable("prices").set({ amount_minor: def.idr }).where("id", "=", found.id).execute();
+    } else {
+      await db.insertInto("prices").values({ id: newId(), sellable_type: "BUNDLE", sellable_id: row.id, currency: "IDR", amount_minor: def.idr }).execute();
+    }
+  }
+
+  const plan = await db.selectFrom("plans").select("id").where("slug", "=", "all-access").executeTakeFirst();
+  if (plan) {
+    for (const [interval, amt] of [["MONTH", 790000], ["YEAR", 7900000]] as const) {
+      const found = await db.selectFrom("prices").select("id").where("sellable_type", "=", "PLAN").where("sellable_id", "=", plan.id).where("currency", "=", "IDR").where("interval", "=", interval).where("active", "=", true).executeTakeFirst();
+      if (found) {
+        await db.updateTable("prices").set({ amount_minor: amt }).where("id", "=", found.id).execute();
+      } else {
+        await db.insertInto("prices").values({ id: newId(), sellable_type: "PLAN", sellable_id: plan.id, currency: "IDR", amount_minor: amt, interval }).execute();
+      }
+    }
+  }
+
+  const hemat = await db.selectFrom("coupons").select("id").where("code", "=", "HEMAT50RB").executeTakeFirst();
+  if (hemat) {
+    await db.updateTable("coupons").set({ amount_off_minor: 500000 }).where("id", "=", hemat.id).execute();
+  } else {
+    await db
+      .insertInto("coupons")
+      .values({ id: newId(), code: "HEMAT50RB", description: "Potongan Rp 5.000 untuk kursus apa saja", kind: "FIXED", amount_off_minor: 500000, currency: "IDR", scope: "COURSES", per_user_limit: 1, created_by: adminId })
+      .execute();
+  }
+
+  const existingIdrOrders = await db.selectFrom("orders").select("id").where("currency", "=", "IDR").limit(1).executeTakeFirst();
+  if (!existingIdrOrders) {
+    const usdLearners = await db
+      .selectFrom("users")
+      .select(["id"])
+      .where("role", "=", "LEARNER")
+      .where((eb) => eb.or([eb("preferred_currency", "is", null), eb("preferred_currency", "=", "USD")]))
+      .orderBy("created_at")
+      .execute();
+    const idrLearnerIds = usdLearners.filter((_, idx) => idx % 3 !== 1).map((u) => u.id);
+    if (idrLearnerIds.length) {
+      await db.updateTable("users").set({ preferred_currency: "IDR" }).where("id", "in", idrLearnerIds).execute();
+
+      const idrPlanPrices = await db.selectFrom("prices").select(["id", "interval", "amount_minor"]).where("sellable_type", "=", "PLAN").where("currency", "=", "IDR").execute();
+      const monthPrice = idrPlanPrices.find((p) => p.interval === "MONTH");
+      const yearPrice = idrPlanPrices.find((p) => p.interval === "YEAR");
+
+      if (monthPrice) {
+        await db
+          .updateTable("subscriptions")
+          .set({ currency: "IDR", price_id: monthPrice.id, amount_minor: Number(monthPrice.amount_minor) })
+          .where("user_id", "in", idrLearnerIds)
+          .where("currency", "=", "USD")
+          .where("interval", "=", "MONTH")
+          .execute();
+      }
+      if (yearPrice) {
+        await db
+          .updateTable("subscriptions")
+          .set({ currency: "IDR", price_id: yearPrice.id, amount_minor: Number(yearPrice.amount_minor) })
+          .where("user_id", "in", idrLearnerIds)
+          .where("currency", "=", "USD")
+          .where("interval", "=", "YEAR")
+          .execute();
+      }
+
+      const usdOrders = await db
+        .selectFrom("orders")
+        .select(["id", "subtotal_minor", "discount_minor", "refunded_minor"])
+        .where("user_id", "in", idrLearnerIds)
+        .where("currency", "=", "USD")
+        .execute();
+      for (const o of usdOrders) {
+        const sub = Math.round((Number(o.subtotal_minor) / 100) * 30000);
+        const disc = Math.round((Number(o.discount_minor) / 100) * 30000);
+        const net = Math.max(0, sub - disc);
+        const tax = Math.round(net * 0.11);
+        const tot = net + tax;
+        const ref = Number(o.refunded_minor) > 0 ? tot : 0;
+        await db
+          .updateTable("orders")
+          .set({
+            currency: "IDR",
+            subtotal_minor: sub,
+            discount_minor: disc,
+            tax_minor: tax,
+            total_minor: tot,
+            refunded_minor: ref,
+            tax: JSON.stringify({ mode: "EXCLUSIVE", rateBps: 1100, label: "PPN", country: "ID" }),
+          })
+          .where("id", "=", o.id)
+          .execute();
+        await db
+          .updateTable("order_items")
+          .set({
+            unit_minor: sub,
+            discount_minor: disc,
+            tax_minor: tax,
+            total_minor: tot,
+          })
+          .where("order_id", "=", o.id)
+          .execute();
+        await db
+          .updateTable("invoices")
+          .set({
+            currency: "IDR",
+            subtotal_minor: ref > 0 ? -sub : sub,
+            discount_minor: ref > 0 ? -disc : disc,
+            tax_minor: ref > 0 ? -tax : tax,
+            total_minor: ref > 0 ? -tot : tot,
+          })
+          .where("order_id", "=", o.id)
+          .execute();
+      }
+    }
+  } else {
+    // Scale up any earlier 1/10th IDR subscriptions, orders, order_items, and invoices
+    await sql`UPDATE subscriptions SET amount_minor = amount_minor * 10 WHERE currency = 'IDR' AND amount_minor < 200000`.execute(db);
+    await sql`UPDATE order_items SET unit_minor = unit_minor * 10, discount_minor = discount_minor * 10, tax_minor = tax_minor * 10, total_minor = total_minor * 10 WHERE order_id IN (SELECT id FROM orders WHERE currency = 'IDR' AND subtotal_minor < 500000)`.execute(db);
+    await sql`UPDATE invoices SET subtotal_minor = subtotal_minor * 10, discount_minor = discount_minor * 10, tax_minor = tax_minor * 10, total_minor = total_minor * 10 WHERE currency = 'IDR' AND ABS(subtotal_minor) < 500000`.execute(db);
+    await sql`UPDATE orders SET subtotal_minor = subtotal_minor * 10, discount_minor = discount_minor * 10, tax_minor = tax_minor * 10, total_minor = total_minor * 10, refunded_minor = refunded_minor * 10 WHERE currency = 'IDR' AND subtotal_minor < 500000`.execute(db);
+  }
+}
+
 export async function seedDemo(): Promise<void> {
   if (config.NODE_ENV === "production") throw new Error("demo:seed refuses to run with NODE_ENV=production");
   try {
     const existing = await db.selectFrom("users").select("id").where("email", "=", ADMIN_EMAIL).executeTakeFirst();
     if (existing) {
+      await ensureIdrSeeded(existing.id);
       printLogins(config.DEMO_PASSWORD ?? null, false);
       return;
     }
@@ -234,9 +399,16 @@ async function seed(password: string): Promise<void> {
       academyName: "Edu Connect",
       tagline: "Satu Platform untuk Belajar, Bimbingan Mentor, dan Raih Prestasi.",
       supportEmail: "help@northwind.example",
-      currencies: { enabled: ["USD", "INR"], default: "USD" },
-      gateways: { routing: { INR: "RAZORPAY", USD: "STRIPE" }, fallback: "STRIPE" },
-      tax: { enabled: true, mode: "EXCLUSIVE", rules: [{ country: "IN", rateBps: 1800, label: "GST" }] },
+      currencies: { enabled: ["IDR", "USD", "INR"], default: "IDR" },
+      gateways: { routing: { INR: "RAZORPAY", USD: "STRIPE", IDR: "STRIPE" }, fallback: "STRIPE" },
+      tax: {
+        enabled: true,
+        mode: "EXCLUSIVE",
+        rules: [
+          { country: "ID", rateBps: 1100, label: "PPN" },
+          { country: "IN", rateBps: 1800, label: "GST" },
+        ],
+      },
       seller: { legalName: "Northwind Academy Ltd", address: "1 Example Street, Example City 00000", taxId: "EX-123456789", email: "billing@northwind.example" },
       certificates: { signatoryName: "Ada Northwind", signatoryTitle: "Head of Learning", footer: "Northwind Academy certifies the completion of every lesson, quiz and project in this course." },
     },
@@ -256,10 +428,12 @@ async function seed(password: string): Promise<void> {
   for (const [i, name] of LEARNERS.entries()) {
     const id = await insertUser(hash, name, "LEARNER", { createdAt: new Date(now - int(5, 80) * DAY) });
     if (i % 3 !== 2) await db.updateTable("users").set({ avatar_upload_id: await avatarFor(id, name, i) }).where("id", "=", id).execute();
-    // A third of the learners are in India and pay in INR.
-    const inr = i % 3 === 0 && i !== 0;
-    if (inr) await db.updateTable("users").set({ preferred_currency: "INR" }).where("id", "=", id).execute();
-    learners.push({ id, name, email: emailFor(name), inr });
+    // Majority of learners pay in IDR (default), ~20% in INR (including index 9), ~20% in USD.
+    const inr = i === 9 || (i > 0 && i % 5 === 0);
+    const usd = !inr && i > 0 && i % 4 === 0;
+    const currency: "IDR" | "USD" | "INR" = inr ? "INR" : usd ? "USD" : "IDR";
+    await db.updateTable("users").set({ preferred_currency: currency }).where("id", "=", id).execute();
+    learners.push({ id, name, email: emailFor(name), currency, inr });
   }
 
   // ── Catalog ────────────────────────────────────────────────────────────
@@ -326,6 +500,7 @@ export interface SeededCourse {
   access: DemoCourse["access"];
   usd: number | null;
   inr: number | null;
+  idr: number | null;
   inPlan: boolean;
   ownerId: string;
   items: SeededItem[];
@@ -374,6 +549,7 @@ async function createCourse(c: DemoCourse, ci: number, categoryId: Map<string, s
   for (const [pos, ins] of c.instructors.entries()) {
     await db.insertInto("course_staff").values({ course_id: id, user_id: instructors[ins]!, role: pos === 0 ? "OWNER" : "EDITOR", listed: true, position: pos }).execute();
   }
+  if (c.idr) await db.insertInto("prices").values({ id: newId(), sellable_type: "COURSE", sellable_id: id, currency: "IDR", amount_minor: c.idr, compare_at_minor: c.compareIdr ?? null }).execute();
   if (c.usd) await db.insertInto("prices").values({ id: newId(), sellable_type: "COURSE", sellable_id: id, currency: "USD", amount_minor: c.usd, compare_at_minor: c.compareUsd ?? null }).execute();
   if (c.inr) await db.insertInto("prices").values({ id: newId(), sellable_type: "COURSE", sellable_id: id, currency: "INR", amount_minor: c.inr }).execute();
 
@@ -421,7 +597,7 @@ async function createCourse(c: DemoCourse, ci: number, categoryId: Map<string, s
     }
   }
   await db.updateTable("courses").set({ item_count: items.length, duration_seconds: total }).where("id", "=", id).execute();
-  return { id, slug: c.slug, title: c.title, access: c.access, usd: c.usd ?? null, inr: c.inr ?? null, inPlan: c.inPlan ?? true, ownerId, items };
+  return { id, slug: c.slug, title: c.title, access: c.access, usd: c.usd ?? null, inr: c.inr ?? null, idr: c.idr ?? null, inPlan: c.inPlan ?? true, ownerId, items };
 }
 
 // ─── Progress ───────────────────────────────────────────────────────────────

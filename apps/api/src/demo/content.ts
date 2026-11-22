@@ -27,7 +27,9 @@ export interface DemoCourse {
   access: "FREE" | "PAID" | "SUBSCRIPTION_ONLY";
   usd?: number;
   inr?: number;
+  idr?: number;
   compareUsd?: number;
+  compareIdr?: number;
   featured?: boolean;
   inPlan?: boolean;
   instructors: number[];
@@ -113,7 +115,9 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 4900,
     inr: 399900,
+    idr: 1490000,
     compareUsd: 7900,
+    compareIdr: 2490000,
     featured: true,
     instructors: [0],
     description:
@@ -136,6 +140,7 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 3900,
     inr: 299900,
+    idr: 990000,
     instructors: [1],
     description: "Start from SELECT and finish writing window functions with confidence. Every lesson uses the same fictional shop's data, so each new idea builds on the last.\n\nBy the end you can turn a vague question from a colleague into a precise query, and explain the result.",
     outcomes: ["Filter, sort and aggregate with confidence", "Join tables without losing or duplicating rows", "Use window functions for running totals and rankings", "Explain a query's result to a non-technical colleague"],
@@ -155,7 +160,9 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 7900,
     inr: 599900,
+    idr: 2290000,
     compareUsd: 9900,
+    compareIdr: 2990000,
     featured: true,
     instructors: [1],
     description: "Machine learning without the hype. You will train models on tabular data, evaluate them the way a sceptical reviewer would, and learn to say what a model can and cannot do.\n\nThe focus is judgement: picking metrics, avoiding leakage, and knowing when a simple baseline wins.",
@@ -210,6 +217,7 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 5900,
     inr: 449900,
+    idr: 1690000,
     instructors: [2],
     description: "Discovery is how teams avoid building the wrong thing well. Learn to frame problems, run interviews that teach you something, and test ideas cheaply before writing code.",
     outcomes: ["Frame an opportunity as a problem worth solving", "Run interviews without leading questions", "Test risky assumptions cheaply", "Share findings that change decisions"],
@@ -229,6 +237,7 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 6900,
     inr: 499900,
+    idr: 1990000,
     instructors: [0],
     description: "Containers and Kubernetes explained by what problems they solve. Build an image, deploy a service, roll out a change, and debug it when it misbehaves.",
     outcomes: ["Build small, reproducible images", "Deploy and roll back a service", "Read logs and events when things go wrong", "Set resource limits that hold up"],
@@ -248,6 +257,7 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 4500,
     inr: 349900,
+    idr: 1290000,
     instructors: [1],
     description: "The statistics you need at work, explained with everyday examples: averages that mislead, uncertainty you can communicate, and experiments you can trust.",
     outcomes: ["Choose between mean and median", "Explain uncertainty with intervals", "Read an A/B test result correctly"],
@@ -267,6 +277,7 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 5900,
     inr: 449900,
+    idr: 1690000,
     instructors: [2, 0],
     description: "Accessibility built into your components instead of patched on before launch. Semantic HTML, focus management, live regions and testing with real assistive technology.",
     outcomes: ["Build accessible dialogs, menus and tabs", "Manage focus in single-page apps", "Test with a screen reader"],
@@ -298,6 +309,7 @@ export const COURSES: DemoCourse[] = [
     access: "PAID",
     usd: 8900,
     inr: 699900,
+    idr: 2490000,
     featured: true,
     instructors: [0],
     description: "The difference between an API that works in a demo and one that works at three in the morning. Retries and idempotency keys, keyset pagination, error contracts, and webhooks that survive duplicates.\n\nEvery lesson ends with a pattern you can lift into your own codebase.",
