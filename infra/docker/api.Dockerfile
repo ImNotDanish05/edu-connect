@@ -23,6 +23,8 @@ RUN corepack enable
 WORKDIR /repo
 
 FROM base AS build
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
 # Download every package in the lockfile first: this layer only changes with the lockfile.
 # package.json too: it pins the pnpm version (packageManager) and carries the overrides
 # the frozen lockfile is checked against.
@@ -32,13 +34,15 @@ COPY . .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --offline --frozen-lockfile --filter @open-lms/api...
 RUN pnpm --filter @open-lms/api build
-# sharp and pdfkit at the versions the workspace resolved (sharp with its prebuilt
-# binary for this platform).
+# sharp and pdfkit at the versions the workspace resolved.
+# Tries building from source first for non-v2 CPU architecture compatibility, then falls back safely.
 RUN mkdir /sharp && cd /sharp \
  && sharp="$(node -p "require('/repo/apps/api/node_modules/sharp/package.json').version")" \
  && pdfkit="$(node -p "require('/repo/apps/api/node_modules/pdfkit/package.json').version")" \
  && echo '{"name":"runtime","private":true}' > package.json \
- && npm install --omit=dev --no-audit --no-fund --no-package-lock "sharp@${sharp}" "pdfkit@${pdfkit}"
+ && (npm install --omit=dev --no-audit --no-fund --no-package-lock --build-from-source=sharp "sharp@${sharp}" "pdfkit@${pdfkit}" \
+     || npm install --omit=dev --no-audit --no-fund --no-package-lock "sharp@${sharp}" "pdfkit@${pdfkit}" \
+     || npm install --omit=dev --no-audit --no-fund --no-package-lock "pdfkit@${pdfkit}")
 
 FROM ${NODE_IMAGE} AS runtime
 # DATA_DIR only matters for STORAGE=local or MAIL_MODE=outbox. /tmp/data suits ECS (read-only

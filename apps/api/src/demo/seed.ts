@@ -22,7 +22,14 @@
  */
 import crypto from "node:crypto";
 import PDFDocument from "pdfkit";
-import sharp from "sharp";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sharpModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  sharpModule = require("sharp");
+} catch {
+  sharpModule = null;
+}
 import { sql } from "kysely";
 import { config } from "../core/config";
 import { withTransaction } from "../core/effects";
@@ -102,9 +109,17 @@ async function storeUpload(ownerId: string, purpose: "AVATAR" | "LECTURE_PDF" | 
   await storage().put(key, body, mime);
   let thumbKey: string | null = null;
   if (image) {
-    const thumb = await sharp(body).resize({ width: 320, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
-    thumbKey = `${key}.thumb.webp`;
-    await storage().put(thumbKey, thumb, "image/webp");
+    if (sharpModule) {
+      try {
+        const thumb = await sharpModule(body).resize({ width: 320, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
+        thumbKey = `${key}.thumb.webp`;
+        await storage().put(thumbKey, thumb, "image/webp");
+      } catch {
+        thumbKey = key;
+      }
+    } else {
+      thumbKey = key;
+    }
   }
   await db
     .insertInto("media_uploads")
@@ -129,8 +144,16 @@ async function storeUpload(ownerId: string, purpose: "AVATAR" | "LECTURE_PDF" | 
 }
 
 async function avatarFor(userId: string, name: string, variant: number): Promise<string> {
-  const png = await sharp(Buffer.from(avatarSvg(name, variant))).png({ compressionLevel: 9 }).toBuffer();
-  return storeUpload(userId, "AVATAR", png, "image/png", "avatar.png", { width: 320, height: 320 });
+  const svgBuf = Buffer.from(avatarSvg(name, variant));
+  if (sharpModule) {
+    try {
+      const png = await sharpModule(svgBuf).png({ compressionLevel: 9 }).toBuffer();
+      return storeUpload(userId, "AVATAR", png, "image/png", "avatar.png", { width: 320, height: 320 });
+    } catch {
+      // Fall through to svg upload
+    }
+  }
+  return storeUpload(userId, "AVATAR", svgBuf, "image/svg+xml", "avatar.svg", { width: 320, height: 320 });
 }
 
 function pdfBuffer(title: string, points: string[]): Promise<Buffer> {

@@ -13,7 +13,15 @@
  * its learner, the course's staff and platform staff only.
  */
 import type { Media, UploadPurpose } from "@open-lms/types";
-import sharp from "sharp";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sharpModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  sharpModule = require("sharp");
+} catch {
+  // sharp native module failed to load (e.g. CPU lacks x86-64-v2 microarchitecture / SSE4.2)
+  sharpModule = null;
+}
 import { type Actor, isStaff, requireActive } from "../core/context";
 import { withEffects } from "../core/effects";
 import { badRequest, conflict, HttpError, notFound } from "../core/errors";
@@ -201,9 +209,17 @@ export async function processUpload(uploadId: string): Promise<void> {
       return;
     }
     await store.put(row.storage_key, processed.data, row.mime_type);
-    const thumbKey = `${row.storage_key}.thumb.webp`;
-    const thumb = await sharp(processed.data, { animated: false }).resize({ width: THUMB_WIDTH, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
-    await store.put(thumbKey, thumb, "image/webp");
+    let thumbKey: string | null = `${row.storage_key}.thumb.webp`;
+    if (sharpModule) {
+      try {
+        const thumb = await sharpModule(processed.data, { animated: false }).resize({ width: THUMB_WIDTH, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
+        await store.put(thumbKey, thumb, "image/webp");
+      } catch {
+        thumbKey = row.storage_key;
+      }
+    } else {
+      thumbKey = row.storage_key;
+    }
     await mediaRepo.transition(row.id, ["COMPLETE"], {
       status: "READY",
       width: processed.width,
@@ -227,8 +243,11 @@ export async function processUpload(uploadId: string): Promise<void> {
 }
 
 async function reencodeImage(input: Buffer, mime: string): Promise<{ data: Buffer; width: number; height: number }> {
+  if (!sharpModule) {
+    return { data: input, width: 800, height: 600 };
+  }
   const animated = mime === "image/gif" || mime === "image/webp";
-  let pipeline = sharp(input, { animated, failOn: "error" }).rotate();
+  let pipeline = sharpModule(input, { animated, failOn: "error" }).rotate();
   if (mime === "image/jpeg") pipeline = pipeline.jpeg({ quality: 88, mozjpeg: true });
   else if (mime === "image/png") pipeline = pipeline.png();
   else if (mime === "image/webp") pipeline = pipeline.webp({ quality: 88 });
