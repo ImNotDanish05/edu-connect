@@ -20,7 +20,7 @@ export interface RuntimeEnv {
 }
 
 export const DEFAULT_ENV: RuntimeEnv = {
-  productName: "Euron Open LMS",
+  productName: "Edu Connect",
   apiUrl: "/api",
 };
 

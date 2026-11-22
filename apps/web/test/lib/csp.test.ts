@@ -26,7 +26,7 @@ describe("content security policy", () => {
 
 describe("runtime env", () => {
   it("reads the container environment with defaults", () => {
-    expect(serverEnv({})).toEqual({ productName: "Euron Open LMS", apiUrl: "/api" });
+    expect(serverEnv({})).toEqual({ productName: "EduConnect", apiUrl: "/api" });
     expect(serverEnv({ PRODUCT_NAME: " Acme Academy ", PUBLIC_API_URL: "https://api.example.org/api" })).toMatchObject({ productName: "Acme Academy", apiUrl: "https://api.example.org/api" });
   });
 });

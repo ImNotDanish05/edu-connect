@@ -47,7 +47,7 @@ const list = z
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(5026),
-  PRODUCT_NAME: z.string().default("Euron Open LMS"),
+  PRODUCT_NAME: z.string().default("EduConnect"),
   /** The web app origin; emailed links and CORS default to it. */
   APP_WEB_URL: z.string().url().default("http://localhost:3530"),
   /** This API's public origin; local-storage media URLs are served from it. */

@@ -20,3 +20,4 @@ export const display = localFont({
   variable: "--font-display",
   display: "swap",
 });
+

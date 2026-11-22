@@ -42,7 +42,7 @@ x-api-env: &api-env
   TZ: UTC
   PORT: "5026"
   LOG_LEVEL: ${LOG_LEVEL:-${LMS_LOG_LEVEL:-info}}
-  PRODUCT_NAME: ${PRODUCT_NAME:-${LMS_PRODUCT_NAME:-Euron Open LMS}}
+  PRODUCT_NAME: ${PRODUCT_NAME:-${LMS_PRODUCT_NAME:-EduConnect}}
   APP_WEB_URL: http://localhost:${LMS_WEB_PORT:-3530}
   # Same origin as the web app: the browser reaches the API through the web proxy.
   PUBLIC_API_URL: http://localhost:${LMS_WEB_PORT:-3530}
@@ -240,7 +240,7 @@ services:
     environment:
       # Server side only: where the Next server proxies /api/*.
       API_INTERNAL_URL: http://api:5026
-      PRODUCT_NAME: ${PRODUCT_NAME:-${LMS_PRODUCT_NAME:-Euron Open LMS}}
+      PRODUCT_NAME: ${PRODUCT_NAME:-${LMS_PRODUCT_NAME:-EduConnect}}
       # Where lecture video plays from (the CSP's media-src and connect-src): the stub's
       # EVS stream locally; your EVS API and media origins in production.
       VIDEO_ORIGINS: ${VIDEO_ORIGINS:-http://localhost:${LMS_STUB_PORT:-5119}}
