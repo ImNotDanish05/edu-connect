@@ -43,13 +43,47 @@ export function createApp() {
   app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } }, crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
   const origins = allowedOrigins();
-  app.use(cors({ origin: (origin, cb) => cb(null, !origin || origins.includes(origin)), credentials: true, maxAge: 600 }));
+
+  const isOriginAllowed = (origin: string | undefined, req?: Request): boolean => {
+    if (!origin) return true;
+    if (origins.includes(origin) || origins.includes("*")) return true;
+
+    // Check same-origin via Host or X-Forwarded-Host header (e.g. Next.js rewrite / reverse proxy)
+    if (req) {
+      const forwardedHost = req.get("x-forwarded-host") || req.get("host");
+      const forwardedProto = req.get("x-forwarded-proto") || req.protocol || "http";
+      if (forwardedHost) {
+        const sameOrigin = `${forwardedProto}://${forwardedHost}`;
+        if (origin === sameOrigin || origin.replace(/^https?:\/\//, "") === forwardedHost) {
+          return true;
+        }
+      }
+    }
+
+    // In development mode, allow any host/IP matching localhost, 127.0.0.1, or VPS IP
+    if (config.NODE_ENV === "development") {
+      try {
+        const u = new URL(origin);
+        if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return true;
+        if (/^(\d{1,3}\.){3}\d{1,3}$/.test(u.hostname)) return true;
+      } catch {}
+    }
+    return false;
+  };
+
+  app.use(
+    cors((req, cb) => {
+      const origin = req.get("origin");
+      const allowed = isOriginAllowed(origin, req as Request);
+      cb(null, { origin: allowed, credentials: true, maxAge: 600 });
+    }),
+  );
 
   // Cookie-authenticated endpoints (refresh, logout) reject cross-site callers even
   // though SameSite=Lax already covers top-level POSTs: defence in depth.
   app.use((req, res, next) => {
     const origin = req.get("origin");
-    if (origin && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS" && !origins.includes(origin)) {
+    if (origin && req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS" && !isOriginAllowed(origin, req)) {
       res.status(403).json({ error: "Origin not allowed", code: "CORS_ORIGIN_DENIED", requestId: req.requestId });
       return;
     }

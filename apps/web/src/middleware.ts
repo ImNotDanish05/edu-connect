@@ -28,9 +28,9 @@ export function buildCsp(opts: { nonce: string; dev: boolean; media: string[]; v
     "font-src 'self' data:",
     // Uploads PUT straight to the storage origin; the player fetches playlists and segments.
     `connect-src 'self' ${media} ${video} ${RAZORPAY}${opts.dev ? " ws: wss:" : ""}`.replace(/\s+/g, " ").trim(),
-    // YouTube lectures embed from the no-cookie host; PDF lectures render in a frame from
+    // YouTube lectures embed from the no-cookie host or main host; PDF lectures render in a frame from
     // the media origin; Razorpay Checkout opens in frames.
-    `frame-src 'self' https://www.youtube-nocookie.com ${media} ${RAZORPAY}`.replace(/\s+/g, " "),
+    `frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com https://*.youtube.com ${media} ${RAZORPAY}`.replace(/\s+/g, " "),
     "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",

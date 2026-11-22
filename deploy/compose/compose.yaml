@@ -43,10 +43,10 @@ x-api-env: &api-env
   PORT: "5026"
   LOG_LEVEL: ${LOG_LEVEL:-${LMS_LOG_LEVEL:-info}}
   PRODUCT_NAME: ${PRODUCT_NAME:-${LMS_PRODUCT_NAME:-EduConnect}}
-  APP_WEB_URL: http://localhost:${LMS_WEB_PORT:-3530}
+  APP_WEB_URL: ${APP_WEB_URL:-http://localhost:${LMS_WEB_PORT:-3530}}
   # Same origin as the web app: the browser reaches the API through the web proxy.
-  PUBLIC_API_URL: http://localhost:${LMS_WEB_PORT:-3530}
-  CORS_ORIGINS: http://localhost:${LMS_WEB_PORT:-3530}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:${LMS_WEB_PORT:-3530}}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:${LMS_WEB_PORT:-3530}}
   TRUST_PROXY: "1"
   DATABASE_URL: postgres://lms:lms@postgres:5432/lms
   DB_POOL_MAX: ${DB_POOL_MAX:-10}
